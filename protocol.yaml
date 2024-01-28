@@ -1,0 +1,21 @@
+build:
+  - echo "1\n"|gmx pdb2gmx -f {file}.pdb -o {file}.gro -water spce
+#После этой команды идет интерактивное вмешательство
+  - gmx editconf -f {file}.gro -o {file}_newbox.gro -c -d 1.0 -bt cubic
+  - gmx solvate -cp {file}_newbox.gro -cs spc216.gro -o {file}_solv.gro -p topol.top
+  - gmx grompp -f {protocols_folder}/ions.mdp -c {file}_solv.gro -p topol.top -o ions.tpr
+  - echo "13"|gmx genion -s ions.tpr -o {file}_solv_ions.gro -p topol.top -pname NA -nname CL -neutral
+em:
+  - gmx grompp -f {protocols_folder}/minim.mdp -c {file}_solv_ions.gro -p topol.top -o {file}_em.tpr
+  - gmx -deffnm {file}_em -v
+equil:
+  - gmx grompp -f {protocols_folder}/equil.mdp -c {file}_em.gro -p topol.top -o {file}_equil.tpr
+  - gmx -deffnm {file}_equil -v # Я б тут тоже энергию, давление и температуру проверял
+  - lambas analyse(arg1,arg2, 'additional') - аргументы для минимального запуска и необязательный третий параметр для расширения функционала
+  # копирование .tpr в отдельную папку?
+analyse:
+#ANALYSIS#
+  - gmx trjconv -s md.tpr -f md.xtc -o md_noPBC.xtc -pbc mol -center
+#После этой команды идет интерактивное вмешательство
+  - gmx rms -s md.tpr -f md_noPBC.xtc -o rmsd_{file}.xvg -tu ns
+#После этой команды идет интерактивное вмешательство
