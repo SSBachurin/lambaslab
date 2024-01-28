@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from lib import build_methods as bm
 import gmxapi
 
+
 @dataclass
 class Lambas:
     yaml_file_path = ''

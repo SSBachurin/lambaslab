@@ -1,0 +1,13 @@
+# Load FF -------------
+source oldff/leaprc.ff14SB
+source leaprc.phosaa10
+loadAmberParams frcmod.ions234lm_126_tip3p
+addPdbResMap {
+                         { 0 "DG" "DG" } { 1 "DG" "DG" }
+                         { 0 "DA" "DA" } { 1 "DA" "DA" }
+                         { 0 "DC" "DC" } { 1 "DC" "DC" }
+                         { 0 "DT" "DT" } { 1 "DT" "DT" }
+                        }
+m = loadpdb .backmap/backmap.pdb
+saveAmberParmNetcdf m .backmap/backmap.prmtop .backmap/backmap.ncrst
+quit

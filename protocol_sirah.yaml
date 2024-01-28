@@ -1,21 +1,96 @@
 build:
-  - echo "1\n"|gmx pdb2gmx -f {file}.pdb -o {file}.gro -water spce
-#После этой команды идет интерактивное вмешательство
-  - gmx editconf -f {file}.gro -o {file}_newbox.gro -c -d 1.0 -bt cubic
-  - gmx solvate -cp {file}_newbox.gro -cs spc216.gro -o {file}_solv.gro -p topol.top
-  - gmx grompp -f {protocols_folder}/ions.mdp -c {file}_solv.gro -p topol.top -o ions.tpr
-  - echo "13"|gmx genion -s ions.tpr -o {file}_solv_ions.gro -p topol.top -pname NA -nname CL -neutral
-em:
-  - gmx grompp -f {protocols_folder}/minim.mdp -c {file}_solv_ions.gro -p topol.top -o {file}_em.tpr
-  - gmx -deffnm {file}_em -v
-equil:
-  - gmx grompp -f {protocols_folder}/equil.mdp -c {file}_em.gro -p topol.top -o {file}_equil.tpr
-  - gmx -deffnm {file}_equil -v # Я б тут тоже энергию, давление и температуру проверял
-  - lambas analyse(arg1,arg2, 'additional') - аргументы для минимального запуска и необязательный третий параметр для расширения функционала
-  # копирование .tpr в отдельную папку?
-analyse:
-#ANALYSIS#
-  - gmx trjconv -s md.tpr -f md.xtc -o md_noPBC.xtc -pbc mol -center
-#После этой команды идет интерактивное вмешательство
-  - gmx rms -s md.tpr -f md_noPBC.xtc -o rmsd_{file}.xvg -tu ns
-#После этой команды идет интерактивное вмешательство
+#Подготовка
+ln -s ../sirah_gromacs/ sirah.ff ;
+ln -s sirah.ff/residuetypes.dat ;
+ln -s sirah.ff/specbond.dat
+
+#Конвертация структуры. Программа не понимает РНК
+#Следует использовать корректное состояние протонирования (http://nbcr-222.ucsd.edu/pdb2pqr)
+../sirah_amber/tools/CGCONV/cgconv.pl \
+-i ref_react.pdb \
+-o ref_react_cg.pdb
+
+#Получаем prmtop файл для регенерации атомной структуры
+tleap -s -f amber.in
+
+#Текст amber.in:
+# Load SIRAH force field
+addPath ../sirah_amber
+source leaprc.sirah
+# Load model
+protein = loadpdb ref_react_cg.pdb
+# Info on system charge
+charge protein
+saveAmberParmNetcdf protein ref_react_cg.prmtop ref_react_cg.ncrst
+# EXIT
+quit
+
+#в громакс
+echo -e "1\n"| gmx pdb2gmx -f ref_react_cg.pdb -o ref_react_cg.gro -ff sirah #нужно еще цифру 1 послать потом, она спрашивает какую модель воды выбрать
+
+gmx editconf -f ref_react_cg.gro -o ref_react_cg_box.gro -d 2.0 -c # тип коробки вводить не обязательно, он в прямоугольную засунет
+
+gmx solvate -cp ref_react_cg_box.gro -cs sirah.ff/wt416.gro -o ref_react_cg_sol1.gro -p topol.top
+
+#Remove WT4 molecules within 0.3 nm of protein
+echo q | gmx make_ndx -f ref_react_cg_sol1.gro -o index.ndx
+gmx grompp \
+-f sirah.ff/tutorial/3/CPU/em1_CGPROT.mdp \
+-p topol.top \
+-po delete1.mdp \
+-c ref_react_cg_sol1.gro \
+-o ref_react_cg_sol1.tpr
+
+gmx select \
+-f ref_react_cg_sol1.gro \
+-s ref_react_cg_sol1.gro \
+-n index.ndx \
+-on rm_close_wt4.ndx \
+-select 'not (same residue as (resname WT4 and within 0.3 of group Protein and within 0.3 of group DNA))'
+
+gmx editconf -f ref_react_cg_sol1.gro -o ref_react_cg_sol2.gro -n rm_close_wt4.ndx
+
+gmx grompp -f sirah.ff/tutorial/3/CPU/em1_CGPROT.mdp -p topol.top -po delete2.mdp -c ref_react_cg_sol1.gro -o ref_react_cg_sol1.tpr
+
+gmx genion -s ref_react_cg_sol1.tpr -o ref_react_cg_ion.gro -np 369 -pname KW -nn 295 -nname ClW -p topol.top #Ионы добавляются из расчёта 1 ион на 34 молекулы воды 
+
+echo -e "a GN GO\n\nq" | gmx make_ndx -f ref_react_cg_ion.gro -o index.ndx
+
+gmx genrestr -f ref_react_cg.gro -n index.ndx -o bkbres.itp
+gmx genrestr -f ref_react_cg.gro -n index.ndx -o bkbres_soft.itp -fc 100 100 100
+
+#ADD TO TOPOLOGY:
+; Include Position restraint file
+#ifdef POSRES
+#include "posre.itp"
+#endif
+; Backbone restraints
+#ifdef GN_GO
+#include "bkbres.itp"
+#endif
+; Backbone soft restrains
+#ifdef GN_GO_SOFT
+#include "bkbres_soft.itp"
+#endif
+
+mkdir -p run; cd run
+
+gmx grompp -f ../sirah.ff/tutorial/3/CPU/em1_CGPROT.mdp -p ../topol.top -po em1.mdp -n ../index.ndx -c ../ref_react_cg_ion.gro  -r ../ref_react_cg_ion.gro -o em1.tpr
+
+gmx mdrun -deffnm em1 -v
+
+gmx grompp -f ../sirah.ff/tutorial/3/CPU/em2_CGPROT.mdp -p ../topol.top -po em2.mdp -n ../index.ndx -c em1.gro -o em2.tpr
+
+gmx mdrun -deffnm em2 -v
+
+gmx grompp -f ../sirah.ff/tutorial/3/CPU/eq1_CGPROT.mdp -p ../topol.top -po eq1.mdp -n ../index.ndx -c em2.gro -r em2.gro -o eq1.tpr
+
+gmx mdrun -deffnm eq1 -v
+
+gmx grompp -f ../sirah.ff/tutorial/3/CPU/eq2_CGPROT.mdp -p ../topol.top -po eq2.mdp -n ../index.ndx -c eq1.gro -r eq1.gro -o eq2.tpr
+
+gmx mdrun -deffnm eq2 -v
+
+gmx grompp -f ../sirah.ff/tutorial/3/CPU/md_CGPROT.mdp -p ../topol.top -po md.mdp -n ../index.ndx -c eq2.gro -o md.tpr
+
+gmx mdrun -deffnm md -v
