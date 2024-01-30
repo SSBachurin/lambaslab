@@ -19,9 +19,8 @@ build:
 - gmx select -f {file}_cg_sol1.gro -s {file}_cg_sol1.gro -n index.ndx -on rm_close_wt4.ndx -select 'not (same residue as (resname WT4 and within 0.3 of group Protein))'
 - gmx editconf -f {file}_cg_sol1.gro -o {file}_cg_sol2.gro -n rm_close_wt4.ndx
 - gmx grompp -f sirah.ff/tutorial/3/CPU/em1_CGPROT.mdp -p topol.top -po delete2.mdp -c {file}_cg_sol1.gro -o {file}_cg_sol1.tpr -maxwarn 2
-# llab_charge amber.log "Total perturbed charge:"
-
-# gmx genion -s {file}_cg_sol1.tpr -o {file}_cg_ion.gro -np 369 -pname KW -nn 295 -nname ClW -p topol.top #Ионы добавляются из расчёта 1 ион на 34 молекулы воды 
+- llab_charge amber.log "Total perturbed charge:"
+- gmx genion -s {file}_cg_sol1.tpr -o {file}_cg_ion.gro -np {p_amount} -pname KW -nn {n_amount} -nname ClW -p topol.top #Ионы добавляются из расчёта 1 ион на 34 молекулы воды 
 
 # echo -e "a GN GO\n\nq" | gmx make_ndx -f {file}_cg_ion.gro -o index.ndx
 

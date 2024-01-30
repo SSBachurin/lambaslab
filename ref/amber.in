@@ -1,6 +1,0 @@
-addPath ../sirah_amber
-source leaprc.sirah
-protein = loadpdb ref_cg.pdb
-charge protein
-saveAmberParmNetcdf protein ref_cg.prmtop ref_cg.ncrst
-quit
