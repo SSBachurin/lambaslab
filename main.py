@@ -20,6 +20,7 @@ class Lambas:
     commands_list = []
     # Перечень комманд, которые должна парсить программа из файла .yaml
     lambaslab_commands = dict()
+    bufer = any
 
     def build(self):
         self.lambaslab_commands = bm.build_methods_list
@@ -45,10 +46,10 @@ class Lambas:
             # Выполняем команды для каждого файла .pdb
             for command in self.commands_list:
                 if command[0] in self.lambaslab_commands.keys():
-                    self.lambaslab_commands[command]() #тут разобраться как передать команду с параметрами корректно, видимо написать функцию parse_command(command)
+                    self.bufer = self.lambaslab_commands[command[0]](command) #тут разобраться как передать команду с параметрами корректно, видимо написать функцию parse_command(command)
                 else:
                     # Формируем команду, добавляя имя файла .pdb
-                    command = command.replace('{file}', geometry_name).replace('{protocols_folder}', work.protocols_folder)
+                    command = command.replace('{file}', geometry_name).replace('{protocols_folder}', work.protocols_folder).replace('{bufer}', self.bufer)
                     # Выполняем команду в консоли
                     process = subprocess.Popen(command, shell=True)
                     process.wait()

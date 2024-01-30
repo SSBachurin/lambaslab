@@ -1,96 +1,65 @@
 build:
 #Подготовка
-ln -s ../sirah_gromacs/ sirah.ff ;
-ln -s sirah.ff/residuetypes.dat ;
-ln -s sirah.ff/specbond.dat
-
+- ln -s ../sirah_gromacs/ sirah.ff ;
+- ln -s sirah.ff/residuetypes.dat ;
+- ln -s sirah.ff/specbond.dat
 #Конвертация структуры. Программа не понимает РНК
 #Следует использовать корректное состояние протонирования (http://nbcr-222.ucsd.edu/pdb2pqr)
-../sirah_amber/tools/CGCONV/cgconv.pl \
--i ref_react.pdb \
--o ref_react_cg.pdb
-
+- ../sirah_amber/tools/CGCONV/cgconv.pl -i {file}.pdb -o {file}_cg.pdb
 #Получаем prmtop файл для регенерации атомной структуры
-tleap -s -f amber.in
-
-#Текст amber.in:
-# Load SIRAH force field
-addPath ../sirah_amber
-source leaprc.sirah
-# Load model
-protein = loadpdb ref_react_cg.pdb
-# Info on system charge
-charge protein
-saveAmberParmNetcdf protein ref_react_cg.prmtop ref_react_cg.ncrst
-# EXIT
-quit
-
+- echo -e "addPath ../sirah_amber\nsource leaprc.sirah\nprotein = loadpdb {file}_cg.pdb\ncharge protein\nsaveAmberParmNetcdf protein {file}_cg.prmtop {file}_cg.ncrst\nquit" > amber.in
+- tleap -s -f amber.in > amber.log
 #в громакс
-echo -e "1\n"| gmx pdb2gmx -f ref_react_cg.pdb -o ref_react_cg.gro -ff sirah #нужно еще цифру 1 послать потом, она спрашивает какую модель воды выбрать
-
-gmx editconf -f ref_react_cg.gro -o ref_react_cg_box.gro -d 2.0 -c # тип коробки вводить не обязательно, он в прямоугольную засунет
-
-gmx solvate -cp ref_react_cg_box.gro -cs sirah.ff/wt416.gro -o ref_react_cg_sol1.gro -p topol.top
-
+- echo -e "1\n"| gmx pdb2gmx -f {file}_cg.pdb -o {file}_cg.gro -ff sirah #нужно еще цифру 1 послать потом, она спрашивает какую модель воды выбрать
+- gmx editconf -f {file}_cg.gro -o {file}_cg_box.gro -d 2.0 -c # тип коробки вводить не обязательно, он в прямоугольную засунет
+- gmx solvate -cp {file}_cg_box.gro -cs sirah.ff/wt416.gro -o {file}_cg_sol1.gro -p topol.top
 #Remove WT4 molecules within 0.3 nm of protein
-echo q | gmx make_ndx -f ref_react_cg_sol1.gro -o index.ndx
-gmx grompp \
--f sirah.ff/tutorial/3/CPU/em1_CGPROT.mdp \
--p topol.top \
--po delete1.mdp \
--c ref_react_cg_sol1.gro \
--o ref_react_cg_sol1.tpr
+- echo q | gmx make_ndx -f {file}_cg_sol1.gro -o index.ndx
+- gmx grompp -f sirah.ff/tutorial/3/CPU/em1_CGPROT.mdp -p topol.top -po delete1.mdp -c {file}_cg_sol1.gro -o {file}_cg_sol1.tpr -maxwarn 2
+- gmx select -f {file}_cg_sol1.gro -s {file}_cg_sol1.gro -n index.ndx -on rm_close_wt4.ndx -select 'not (same residue as (resname WT4 and within 0.3 of group Protein))'
+- gmx editconf -f {file}_cg_sol1.gro -o {file}_cg_sol2.gro -n rm_close_wt4.ndx
+- gmx grompp -f sirah.ff/tutorial/3/CPU/em1_CGPROT.mdp -p topol.top -po delete2.mdp -c {file}_cg_sol1.gro -o {file}_cg_sol1.tpr -maxwarn 2
+# llab_charge amber.log "Total perturbed charge:"
 
-gmx select \
--f ref_react_cg_sol1.gro \
--s ref_react_cg_sol1.gro \
--n index.ndx \
--on rm_close_wt4.ndx \
--select 'not (same residue as (resname WT4 and within 0.3 of group Protein and within 0.3 of group DNA))'
+# gmx genion -s {file}_cg_sol1.tpr -o {file}_cg_ion.gro -np 369 -pname KW -nn 295 -nname ClW -p topol.top #Ионы добавляются из расчёта 1 ион на 34 молекулы воды 
 
-gmx editconf -f ref_react_cg_sol1.gro -o ref_react_cg_sol2.gro -n rm_close_wt4.ndx
+# echo -e "a GN GO\n\nq" | gmx make_ndx -f {file}_cg_ion.gro -o index.ndx
 
-gmx grompp -f sirah.ff/tutorial/3/CPU/em1_CGPROT.mdp -p topol.top -po delete2.mdp -c ref_react_cg_sol1.gro -o ref_react_cg_sol1.tpr
+# gmx genrestr -f {file}_cg.gro -n index.ndx -o bkbres.itp
+# gmx genrestr -f {file}_cg.gro -n index.ndx -o bkbres_soft.itp -fc 100 100 100
 
-gmx genion -s ref_react_cg_sol1.tpr -o ref_react_cg_ion.gro -np 369 -pname KW -nn 295 -nname ClW -p topol.top #Ионы добавляются из расчёта 1 ион на 34 молекулы воды 
+# #ADD TO TOPOLOGY:
+# ; Include Position restraint file
+# #ifdef POSRES
+# #include "posre.itp"
+# #endif
+# ; Backbone restraints
+# #ifdef GN_GO
+# #include "bkbres.itp"
+# #endif
+# ; Backbone soft restrains
+# #ifdef GN_GO_SOFT
+# #include "bkbres_soft.itp"
+# #endif
 
-echo -e "a GN GO\n\nq" | gmx make_ndx -f ref_react_cg_ion.gro -o index.ndx
+# mkdir -p run; cd run
 
-gmx genrestr -f ref_react_cg.gro -n index.ndx -o bkbres.itp
-gmx genrestr -f ref_react_cg.gro -n index.ndx -o bkbres_soft.itp -fc 100 100 100
+# gmx grompp -f ../sirah.ff/tutorial/3/CPU/em1_CGPROT.mdp -p ../topol.top -po em1.mdp -n ../index.ndx -c ../{file}_cg_ion.gro  -r ../{file}_cg_ion.gro -o em1.tpr
 
-#ADD TO TOPOLOGY:
-; Include Position restraint file
-#ifdef POSRES
-#include "posre.itp"
-#endif
-; Backbone restraints
-#ifdef GN_GO
-#include "bkbres.itp"
-#endif
-; Backbone soft restrains
-#ifdef GN_GO_SOFT
-#include "bkbres_soft.itp"
-#endif
+# gmx mdrun -deffnm em1 -v
 
-mkdir -p run; cd run
+# gmx grompp -f ../sirah.ff/tutorial/3/CPU/em2_CGPROT.mdp -p ../topol.top -po em2.mdp -n ../index.ndx -c em1.gro -o em2.tpr
 
-gmx grompp -f ../sirah.ff/tutorial/3/CPU/em1_CGPROT.mdp -p ../topol.top -po em1.mdp -n ../index.ndx -c ../ref_react_cg_ion.gro  -r ../ref_react_cg_ion.gro -o em1.tpr
+# gmx mdrun -deffnm em2 -v
 
-gmx mdrun -deffnm em1 -v
+# gmx grompp -f ../sirah.ff/tutorial/3/CPU/eq1_CGPROT.mdp -p ../topol.top -po eq1.mdp -n ../index.ndx -c em2.gro -r em2.gro -o eq1.tpr
 
-gmx grompp -f ../sirah.ff/tutorial/3/CPU/em2_CGPROT.mdp -p ../topol.top -po em2.mdp -n ../index.ndx -c em1.gro -o em2.tpr
+# gmx mdrun -deffnm eq1 -v
 
-gmx mdrun -deffnm em2 -v
+# gmx grompp -f ../sirah.ff/tutorial/3/CPU/eq2_CGPROT.mdp -p ../topol.top -po eq2.mdp -n ../index.ndx -c eq1.gro -r eq1.gro -o eq2.tpr
 
-gmx grompp -f ../sirah.ff/tutorial/3/CPU/eq1_CGPROT.mdp -p ../topol.top -po eq1.mdp -n ../index.ndx -c em2.gro -r em2.gro -o eq1.tpr
+# gmx mdrun -deffnm eq2 -v
 
-gmx mdrun -deffnm eq1 -v
+# gmx grompp -f ../sirah.ff/tutorial/3/CPU/md_CGPROT.mdp -p ../topol.top -po md.mdp -n ../index.ndx -c eq2.gro -o md.tpr
 
-gmx grompp -f ../sirah.ff/tutorial/3/CPU/eq2_CGPROT.mdp -p ../topol.top -po eq2.mdp -n ../index.ndx -c eq1.gro -r eq1.gro -o eq2.tpr
-
-gmx mdrun -deffnm eq2 -v
-
-gmx grompp -f ../sirah.ff/tutorial/3/CPU/md_CGPROT.mdp -p ../topol.top -po md.mdp -n ../index.ndx -c eq2.gro -o md.tpr
-
-gmx mdrun -deffnm md -v
+# gmx mdrun -deffnm md -v
