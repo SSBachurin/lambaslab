@@ -85,7 +85,7 @@ class Lambas:
         self.work_dict['n_amount'] = ion_amout
         # Если строка с подстрокой не найдена, возвращаем None
         return self
-    
+
     def analyse(self):
         ...
 
@@ -109,8 +109,8 @@ if __name__ == "__main__":
 
     work = Lambas()
     work.home_dir = os.getcwd()
-    #work.protocols_folder = os.path.abspath(args.protocols_folder)
-    work.work_dict['{protocols_folder}'] = os.path.abspath(args.protocols_folder)
+    work.work_dict['{protocols_folder}'] = os.path.abspath(
+        args.protocols_folder)
     work.yaml_file_path = os.path.abspath(args.conf)
 
     print("У Вас есть необходимые папки geometries и protocols "
